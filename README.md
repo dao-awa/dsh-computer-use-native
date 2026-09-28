@@ -261,11 +261,21 @@ real harness service instead of a stand-in. The spike scripts must be started wi
 the matching one.
 
 `compose:real` is the composition check that matters. It mounts the plugin
-against `@deepseek-ai/dsh-computer-use` itself, which reserves its provider slot
-through a `ctx.effect` call made inside `register()`. Cordis resolves a service's
-`this.ctx` to its caller, so that effect binds to this plugin's fiber and disposal
-releases the slot — a claim about framework behaviour that a stand-in service
-cannot check, and one whose failure would leave the slot occupied after an unload.
+against the real `@deepseek-ai/dsh-computer-use`, `@deepseek-ai/dsh-system-prompt`,
+and `@deepseek-ai/dsh-tools` rather than stand-ins, and each of the three has an
+API a stub would have hidden:
+
+- The provider registry reserves its slot through a `ctx.effect` call made
+  *inside* `register()`. Cordis resolves a service's `this.ctx` to its caller, so
+  that effect binds to this plugin's fiber and disposal releases the slot — a
+  claim about framework behaviour, and one whose failure would leave the slot
+  occupied after an unload.
+- The prompt service owns the section order this plugin asks for, and assembling
+  is what the model actually receives, so the check asserts the guidance text
+  appears in the assembly and leaves it again on disposal.
+- The tool registry validates each definition and projects its schema to
+  lossless JSON. Reading the catalog back is what shows the eight tools are
+  registrable; a stub `register()` that accepts anything cannot.
 
 The profile side is verifiable without starting the app:
 
