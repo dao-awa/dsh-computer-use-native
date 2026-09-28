@@ -14,6 +14,14 @@
     "koffi"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dao-awa/dsh-computer-use-native.git"
+  },
+  "homepage": "https://github.com/dao-awa/dsh-computer-use-native#readme",
+  "bugs": {
+    "url": "https://github.com/dao-awa/dsh-computer-use-native/issues"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

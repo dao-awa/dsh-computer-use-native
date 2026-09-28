@@ -44,6 +44,13 @@ behaviour and the two limits that come with it.
 dsh plugin add dsh-computer-use-native
 ```
 
+Or install straight from the repository, pinned to a commit so a later push
+cannot change what you are running:
+
+```sh
+dsh plugin --profile web add github:dao-awa/dsh-computer-use-native#1354d1d1481619c2cc0a5ecccfa8180f1a34452a
+```
+
 The bundle's patch layer mounts two rows: `@deepseek-ai/dsh-computer-use`, which
 owns the provider registration and is not part of the base bundle, and this
 provider. Restart DSH and start a new session; bundles are mounted before a
