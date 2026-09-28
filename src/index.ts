@@ -22,6 +22,7 @@ import { ComputerUseProviderName } from '@deepseek-ai/dsh-computer-use/brand'
 import { assertInputLayout } from './win32/native.ts'
 import { configureDpiAwareness, listWindows } from './win32/window.ts'
 import { ViewportRegistry } from './viewport.ts'
+import { Eye } from './eye.ts'
 import { createScreenshotTool } from './tools/screenshot.ts'
 import { createInputTools } from './tools/input.ts'
 import { createWindowTool } from './tools/window.ts'
@@ -90,6 +91,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const inputSize = assertInputLayout()
 
   const registry = new ViewportRegistry()
+  // Remembered looks live for the plugin's lifetime, so a repeat glance at an
+  // unchanged screen stays cheap across turns rather than within one.
+  const eye = new Eye()
 
   // Every contribution is registered inside one effect so that unloading the
   // plugin releases all of it: the exclusive provider slot, the tools, and the
@@ -97,7 +101,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   // behind on disposal.
   ctx.effect(function* () {
     yield ctx.computerUse.register(ComputerUseProviderName(config.providerName))
-    yield ctx.tools.register(createScreenshotTool(ctx, registry))
+    yield ctx.tools.register(createScreenshotTool(ctx, registry, eye))
     for (const tool of createInputTools(ctx, registry)) yield ctx.tools.register(tool)
     yield ctx.tools.register(createWindowTool(ctx))
     yield ctx.systemPrompt.section({

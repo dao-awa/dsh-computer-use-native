@@ -29,6 +29,7 @@ import {
   GetDC,
   GetDIBits,
   GetSystemMetrics,
+  HALFTONE,
   HWND_DESKTOP,
   PW_CLIENTONLY,
   PW_RENDERFULLCONTENT,
@@ -39,14 +40,21 @@ import {
   SM_XVIRTUALSCREEN,
   SM_YVIRTUALSCREEN,
   SelectObject,
+  SetStretchBltMode,
+  StretchBlt,
 } from './dll.ts'
 import { getWindowInfo } from './window.ts'
 
 /** `BitBlt` raster operation: direct copy of source pixels. */
 const SRCCOPY_ROP = 0x00CC0020
 
-/** How a frame was obtained. */
-export type CaptureMethod = 'print-window' | 'screen'
+/**
+ * How a frame was obtained.
+ *
+ * `probe` is a deliberate reduction of the screen rather than a full capture,
+ * and is only ever used to decide whether the view changed.
+ */
+export type CaptureMethod = 'print-window' | 'screen' | 'probe'
 
 /** One captured frame in the form the encoder expects. */
 export interface CaptureFrame {
@@ -200,6 +208,62 @@ export function captureScreen(region: CaptureRegion): CaptureFrame {
     )
     if (!copied) throw new Error(`BitBlt failed for region ${region.x},${region.y} ${region.width}x${region.height}`)
     return readBitmap(hdcMem, hbm, region.width, region.height, { x: region.x, y: region.y }, 'screen')
+  } finally {
+    SelectObject(hdcMem, previous)
+    DeleteObject(hbm)
+    DeleteDC(hdcMem)
+    ReleaseDC(HWND_DESKTOP, hdcScreen)
+  }
+}
+
+/**
+ * Longest edge of a probe capture, in pixels.
+ *
+ * A glance needs to know whether the view moved, not what every pixel says. At
+ * this size the whole frame is tens of kilobytes instead of sixteen megabytes,
+ * which is what makes looking often affordable.
+ */
+export const PROBE_MAX_EDGE = 160
+
+/**
+ * Take a small picture of the screen.
+ *
+ * `StretchBlt` reduces inside GDI, so the full-resolution pixels are never
+ * copied across the bus. The alternative — capture at full size, then reduce —
+ * pays for the transfer and then throws most of it away.
+ * @param region - the screen rectangle to capture.
+ * @param maxEdge - longest edge of the result, in pixels.
+ * @returns the reduced frame, positioned at the region's screen origin.
+ */
+export function captureScreenSmall(region: CaptureRegion, maxEdge = PROBE_MAX_EDGE): CaptureFrame {
+  if (region.width <= 0 || region.height <= 0) {
+    throw new Error(`capture region is empty (${region.width}x${region.height})`)
+  }
+
+  const longest = Math.max(region.width, region.height)
+  const ratio = longest > maxEdge ? maxEdge / longest : 1
+  const width = Math.max(1, Math.round(region.width * ratio))
+  const height = Math.max(1, Math.round(region.height * ratio))
+
+  const hdcScreen = GetDC(HWND_DESKTOP)
+  if (!hdcScreen) throw new Error('GetDC returned no screen device context')
+
+  const hdcMem = CreateCompatibleDC(hdcScreen)
+  const hbm = CreateCompatibleBitmap(hdcScreen, width, height)
+  const previous = SelectObject(hdcMem, hbm)
+
+  try {
+    // HALFTONE averages the source pixels, which is what keeps a reduced frame
+    // readable; the default mode drops pixels instead and would make text
+    // shimmer into noise.
+    SetStretchBltMode(hdcMem, HALFTONE)
+    const copied = StretchBlt(
+      hdcMem, 0, 0, width, height,
+      hdcScreen, region.x, region.y, region.width, region.height,
+      SRCCOPY_ROP,
+    )
+    if (!copied) throw new Error(`StretchBlt failed for region ${region.x},${region.y} ${region.width}x${region.height}`)
+    return readBitmap(hdcMem, hbm, width, height, { x: region.x, y: region.y }, 'probe')
   } finally {
     SelectObject(hdcMem, previous)
     DeleteObject(hbm)

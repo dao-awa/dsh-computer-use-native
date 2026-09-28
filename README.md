@@ -108,6 +108,43 @@ Two guards make this safe rather than merely convenient:
 - **Bounds.** A point outside the image is refused rather than clamped. Clamping
   would act on an unrelated part of the desktop.
 
+## Looking is cheap, so look often
+
+A screenshot costs mostly its encode. Measured on a 2560x1600 desktop: the GDI
+capture is about 43 ms, converting and encoding to PNG is 122–208 ms, and
+comparing pixels is a fraction of a millisecond. Re-encoding a screen that has not
+moved is the whole cost of looking twice, and looking twice is most of what an
+agent does.
+
+So each look is compared against the last look at the same target, and when the
+view has not moved the tool says so, sends no image, and points back at the
+viewport that already describes it. Measured end to end through the shipped tool:
+**238 ms for the first look, 41 ms for a repeat** — 17% of the cost, with no
+attachment written and no image in the request.
+
+The comparison is deliberately not byte identity. Five samples of a live desktop
+taken a fifth of a second apart produce five different frames, because a caret
+blinks, a spinner turns, and a clock ticks. A person watching that screen sees one
+unchanged view. Each frame is reduced to a 32x20 grid of average luminances and a
+look counts as unchanged while fewer than 2% of those cells move, which sits above
+a spinner and below a window opening. On a real desktop the animated indicator in
+a running agent loop moves 0.0–0.2% of the grid.
+
+Repeat looks read a reduced capture rather than the frame the model would be
+shown. Both cost the same to obtain — GDI's screen readback dominates and does not
+shrink with the destination, so a 160x100 probe costs the same 43 ms a full
+capture does — but the probe is 63 KiB instead of 15.6 MiB, so looking repeatedly
+does not churn the heap, and its resolution loss averages away exactly the
+flickers that are not changes.
+
+`waitForChangeMs` uses the same comparison to make an action's result observable.
+Instead of capturing a half-drawn frame or sleeping for a guessed delay, the tool
+watches the screen and reports whether it moved and after how long.
+
+The floor is the screen readback, not the encoding. Going below it needs the
+Desktop Duplication API, which reads only the rectangles the compositor reports as
+dirty; GDI's `BitBlt` has no such option and always copies the whole surface.
+
 ## Input routes: background and foreground
 
 Every input tool takes a `dispatch` parameter, and the two routes trade opposite
@@ -274,6 +311,8 @@ npm run compose                          # mounts the plugin in a real Cordis co
 npm run compose:real                     # mounts it against the real harness services
 npm run bg-tools                         # drives a backgrounded Chromium page through the tools
 npm run child-routing                    # posts into a WinForms control window
+npm run unchanged-look                   # looking twice at the real desktop
+npm run latency                          # where a screenshot's time goes
 npm run bench                            # image size by maxEdge and PNG effort
 ```
 

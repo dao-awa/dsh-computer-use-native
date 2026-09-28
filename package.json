@@ -1,6 +1,6 @@
-﻿{
+{
   "name": "dsh-computer-use-native",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Windows computer use for DeepSeek Harness built for a vision model: screenshot the real desktop, read the interface from pixels, and click what you see. Drives Win32 through koffi FFI with no native addon and no accessibility tree, and posts input to a window's own queue so the desktop focus is left alone.",
   "keywords": [
     "dsh",
@@ -62,6 +62,8 @@
     "bg-tools": "tsx --tsconfig tsconfig.test.json spike/background-tools-test.ts",
     "child-routing": "tsx --tsconfig tsconfig.test.json spike/child-routing-test.ts",
     "bench": "tsx --tsconfig tsconfig.test.json spike/size-bench.ts",
+    "latency": "tsx --tsconfig tsconfig.test.json spike/latency-test.ts",
+    "unchanged-look": "tsx --tsconfig tsconfig.test.json spike/unchanged-look-test.ts",
     "smoke": "tsx --tsconfig tsconfig.test.json spike/win32-smoke.ts"
   },
   "peerDependencies": {

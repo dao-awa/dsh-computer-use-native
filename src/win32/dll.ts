@@ -349,6 +349,26 @@ export const BitBlt = gdi32.func(
   'bool __stdcall BitBlt(intptr_t hdcDest, int x, int y, int cx, int cy, intptr_t hdcSrc, int x1, int y1, uint32 rop)',
 )
 
+/**
+ * Copy a source rectangle into a differently sized destination.
+ *
+ * Used to take a small picture of the screen directly, rather than capturing it
+ * at full size and reducing it afterwards. A glance does not need every pixel,
+ * and letting GDI do the reduction avoids moving sixteen megabytes across the
+ * bus for it.
+ */
+export const StretchBlt = gdi32.func(
+  'bool __stdcall StretchBlt(intptr_t hdcDest, int x, int y, int cx, int cy, intptr_t hdcSrc, int x1, int y1, int cx1, int cy1, uint32 rop)',
+)
+
+/** Select the stretching mode used by {@link StretchBlt}. */
+export const SetStretchBltMode = gdi32.func(
+  'int __stdcall SetStretchBltMode(intptr_t hdc, int mode)',
+)
+
+/** `SetStretchBltMode` mode: average source pixels, for a readable reduction. */
+export const HALFTONE = 4
+
 // -------------------------------------------------------------------- input
 
 /**
