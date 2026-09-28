@@ -206,6 +206,33 @@ export const ScreenToClient = user32.func(
   'bool __stdcall ScreenToClient(intptr_t hWnd, _Inout_ POINT *lpPoint)',
 )
 
+/**
+ * The deepest window at a screen point, including child windows.
+ *
+ * This is the hit test the system performs for real mouse input, so it is what
+ * decides which child a posted mouse message belongs to. Unlike
+ * {@link ChildWindowFromPointEx} it reports a child only when the point is over
+ * that child rather than falling back to the parent.
+ */
+export const WindowFromPoint = user32.func('intptr_t __stdcall WindowFromPoint(POINT pt)')
+
+/** Walk a window's ancestry. */
+export const GetAncestor = user32.func(
+  'intptr_t __stdcall GetAncestor(intptr_t hWnd, uint32 gaFlags)',
+)
+
+/** `GetAncestor` flag: the parent window, skipping the owner. */
+export const GA_PARENT = 1
+
+/**
+ * The window that would receive keyboard input for the calling thread's queue.
+ *
+ * A thread's focus is only visible to that thread, so reading another
+ * application's focused control requires attaching to its input queue first —
+ * see {@link AttachThreadInput}.
+ */
+export const GetFocus = user32.func('intptr_t __stdcall GetFocus()')
+
 /** Window currently receiving keyboard input. */
 export const GetForegroundWindow = user32.func('intptr_t __stdcall GetForegroundWindow()')
 

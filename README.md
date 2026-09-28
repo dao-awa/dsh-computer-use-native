@@ -121,6 +121,20 @@ coordinates, so the tool converts the screenshot point back through
 `ScreenToClient` before posting; `WM_MOUSEWHEEL` is the one exception, whose
 `lParam` holds screen coordinates.
 
+A posted message goes to the control that owns the point, not to the frame the
+screenshot showed. Windows sends real mouse input to the deepest window under the
+pointer, and most classic Win32 software — dialogs, property sheets, anything
+built from control windows — keeps its edit boxes and buttons in child windows. A
+frame that receives a message meant for one of its controls discards it, silently,
+while `PostMessage` still reports success. So the module hit-tests the point with
+`WindowFromPoint`, confirms the hit is a descendant of the addressed window, and
+posts there instead. Characters and keys go to the focused control, which is
+reachable only after `AttachThreadInput` shares the target's input queue with ours,
+since a thread's keyboard focus is private to that thread.
+
+A window that owns its whole surface — a browser, or a XAML application with no
+child windows — is its own hit-test result, so nothing changes for it.
+
 **`foreground`** raises the target and moves the real cursor through `SendInput`.
 Every window receives it, at the cost of taking the desktop over.
 
@@ -129,8 +143,8 @@ smaller failure than commandeering the machine. The route is chosen per call, so
 model that finds one step did nothing retries that step with
 `dispatch="foreground"` and leaves the rest of the run silent.
 
-Measured behaviour — Windows 11, 150% DPI, a Chromium page backgrounded behind a
-real application, driven through the shipped tools:
+Measured behaviour — Windows 11, 150% DPI, each target backgrounded behind a real
+application and driven through the shipped tools:
 
 | Case | Result |
 |---|---|
@@ -138,11 +152,16 @@ real application, driven through the shipped tools:
 | Type into the focused field of a backgrounded Chromium page | Delivered; all 15 characters arrived. |
 | Foreground after a click into body text | Unchanged. |
 | Foreground after a click into a text field | Chromium activates its own window, because the field needs keyboard focus. The result note reports it. |
+| Click and type into a WinForms text box, addressed by its frame's coordinates | Delivered to the child control; all 19 characters arrived, and the foreground stayed where it was. |
+| Click and type into Windows 11 Notepad | Nothing arrived. Notepad is a XAML app with no child windows, and it does not read posted messages. `dispatch="foreground"` is the route for it. |
 
-Two limits follow from that table. Posted characters reach whatever already holds
-focus *inside* the target window, so a field has to be clicked before text lands
-in it. And a control that needs keyboard focus — a text field, not body text —
-makes its own window activate; the tool reports that rather than hiding it.
+Three consequences follow. Posted characters reach whatever already holds focus
+*inside* the target window, so a field has to be clicked before text lands in it.
+A control that needs keyboard focus — a text field, not body text — makes its own
+window activate, and the tool reports that rather than hiding it. And an
+application that reads hardware input instead of its message queue, which includes
+XAML and WinUI software, will ignore the posted route entirely; the result says so,
+and the retry is `dispatch="foreground"`.
 
 If a window will not come forward on the foreground route, the foreground lock is
 the usual cause. The tool raises through `AttachThreadInput` to share the target's
@@ -205,7 +224,7 @@ src/
     post.ts         posted messages: the background input route
 ```
 
-Four details are load-bearing and would be silent failures if wrong:
+Five details are load-bearing and would be silent failures if wrong:
 
 - **DPI awareness is set before anything else.** `SetProcessDpiAwarenessContext`
   with `PER_MONITOR_AWARE_V2` must run before the first capture or coordinate
@@ -221,6 +240,11 @@ Four details are load-bearing and would be silent failures if wrong:
   the client origin is not the frame origin — a browser draws its own toolbar
   inside the client area. Posting a screen point mis-clicks by the height of that
   toolbar. `WM_MOUSEWHEEL` is the exception and does take screen coordinates.
+- **A posted message belongs to the control under the point, not to the frame.**
+  Posting to the frame is accepted and then discarded by any window whose
+  controls are separate child windows, which is most classic Win32 software. The
+  point is hit-tested with `WindowFromPoint` and the message goes to the deepest
+  descendant of the addressed window.
 
 ## Limitations
 
@@ -231,7 +255,8 @@ Four details are load-bearing and would be silent failures if wrong:
   refuse capture or reject synthesized input. The failure is reported, not hidden.
 - **Posted input can be ignored.** The background route is the default because it
   is quiet, not because it is universal. A window that reads the hardware input
-  queue rather than its message queue sees nothing, and the tool reports the
+  queue rather than its message queue sees nothing — a XAML or WinUI application
+  such as Windows 11 Notepad is the measured case — and the tool reports the
   refusal so the model can retry with `dispatch="foreground"`.
 - **No accessibility data.** This provider deliberately does not read the UI
   Automation tree. Reading a control's value without seeing it is a different
@@ -246,8 +271,9 @@ npm run build
 npm run pipeline                         # capture -> encode -> viewport -> coordinates
 npm run pipeline:click                   # the same, and sends a real click
 npm run compose                          # mounts the plugin in a real Cordis context
-npm run compose:real                     # mounts it against the real computer-use service
+npm run compose:real                     # mounts it against the real harness services
 npm run bg-tools                         # drives a backgrounded Chromium page through the tools
+npm run child-routing                    # posts into a WinForms control window
 npm run bench                            # image size by maxEdge and PNG effort
 ```
 

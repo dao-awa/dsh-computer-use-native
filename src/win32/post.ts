@@ -29,7 +29,14 @@
  */
 
 import {
+  AttachThreadInput,
+  ClientToScreen,
+  GA_PARENT,
+  GetAncestor,
+  GetCurrentThreadId,
+  GetFocus,
   GetForegroundWindow,
+  GetWindowThreadProcessId,
   MK_LBUTTON,
   MK_MBUTTON,
   MK_RBUTTON,
@@ -49,6 +56,7 @@ import {
   WM_MOUSEWHEEL,
   WM_RBUTTONDOWN,
   WM_RBUTTONUP,
+  WindowFromPoint,
 } from './dll.ts'
 import { virtualKeyFor, type MouseButton } from './input.ts'
 
@@ -83,6 +91,92 @@ function packClient(x: number, y: number): number {
   return ((y & 0xffff) << 16) | (x & 0xffff)
 }
 
+/** How far up the parent chain to look before giving up. */
+const ANCESTRY_LIMIT = 64
+
+/**
+ * Whether a window lies on another window's ancestry.
+ * @param candidate - window to test.
+ * @param root - window the chain must reach.
+ * @returns whether `candidate` is `root` or one of its descendants.
+ */
+function isDescendantOf(candidate: number, root: number): boolean {
+  let current = candidate
+  for (let depth = 0; current !== 0 && depth < ANCESTRY_LIMIT; depth += 1) {
+    if (current === root) return true
+    current = Number(GetAncestor(current, GA_PARENT))
+  }
+  return false
+}
+
+/**
+ * The window that a mouse message at a screen point belongs to.
+ *
+ * Windows delivers real mouse input to the deepest window under the pointer, not
+ * to the frame. A window that owns its whole surface — a browser, or a XAML app
+ * with no child windows — is that deepest window itself, so this returns the
+ * frame and nothing changes. A window built from separate control windows, which
+ * is most classic Win32 software, needs the message to arrive at the control or
+ * the frame discards it.
+ * @param root - the window the caller addressed.
+ * @param screen - pointer position in screen pixels.
+ * @returns the deepest descendant of `root` at that point, or `root` when the
+ * point belongs to another window or to no child.
+ */
+function routeToChildAtScreen(root: number, screen: { x: number, y: number }): number {
+  const hit = Number(WindowFromPoint({ x: screen.x, y: screen.y }))
+  return hit !== 0 && hit !== root && isDescendantOf(hit, root) ? hit : root
+}
+
+/**
+ * Redirect a client-area point to the child window that owns it.
+ * @param hwnd - the window the caller addressed.
+ * @param x - client-area x within `hwnd`.
+ * @param y - client-area y within `hwnd`.
+ * @returns the window to post to, and the point in that window's client area.
+ */
+function routeToChild(hwnd: number, x: number, y: number): { hwnd: number, x: number, y: number } {
+  const screen: Record<string, number> = { x, y }
+  if (!ClientToScreen(hwnd, screen)) return { hwnd, x, y }
+  const screenPoint = { x: screen.x ?? 0, y: screen.y ?? 0 }
+  const child = routeToChildAtScreen(hwnd, screenPoint)
+  if (child === hwnd) return { hwnd, x, y }
+  const client: Record<string, number> = { x: screenPoint.x, y: screenPoint.y }
+  if (!ScreenToClient(child, client)) return { hwnd, x, y }
+  return { hwnd: child, x: client.x ?? 0, y: client.y ?? 0 }
+}
+
+/**
+ * The window that would receive typed characters inside a target window.
+ *
+ * A thread's keyboard focus is private to that thread, so it is only readable
+ * after attaching to the target's input queue. The focus window is frequently a
+ * control rather than the frame — an edit box inside a dialog, for instance —
+ * and a frame that receives `WM_CHAR` on its control's behalf discards it.
+ * @param hwnd - the window the caller addressed.
+ * @returns the focused descendant of `hwnd`, or `hwnd` when focus is elsewhere.
+ */
+function routeToFocus(hwnd: number): number {
+  // koffi writes a pointer-to-primitive out parameter into an array slot, where
+  // a pointer-to-struct one is written into a plain object's fields.
+  const process = [0]
+  const targetThread = Number(GetWindowThreadProcessId(hwnd, process))
+  const ownThread = Number(GetCurrentThreadId())
+  if (targetThread === 0) return hwnd
+  if (targetThread === ownThread) {
+    const focus = Number(GetFocus())
+    return focus !== 0 && isDescendantOf(focus, hwnd) ? focus : hwnd
+  }
+  if (!AttachThreadInput(ownThread, targetThread, true)) return hwnd
+  let focus = 0
+  try {
+    focus = Number(GetFocus())
+  } finally {
+    AttachThreadInput(ownThread, targetThread, false)
+  }
+  return focus !== 0 && isDescendantOf(focus, hwnd) ? focus : hwnd
+}
+
 /** The down/up message pair and the `wParam` key state for one button. */
 const BUTTON_MESSAGES: Record<MouseButton, { down: number, up: number, held: number }> = {
   left: { down: WM_LBUTTONDOWN, up: WM_LBUTTONUP, held: MK_LBUTTON },
@@ -98,7 +192,8 @@ const BUTTON_MESSAGES: Record<MouseButton, { down: number, up: number, held: num
  * @returns whether the message was queued.
  */
 export function postMouseMove(hwnd: number, x: number, y: number): boolean {
-  return Boolean(PostMessageW(hwnd, WM_MOUSEMOVE, 0, packClient(x, y)))
+  const target = routeToChild(hwnd, x, y)
+  return Boolean(PostMessageW(target.hwnd, WM_MOUSEMOVE, 0, packClient(target.x, target.y)))
 }
 
 /**
@@ -121,14 +216,15 @@ export function postClick(
   count = 1,
 ): boolean {
   const messages = BUTTON_MESSAGES[button]
-  const lparam = packClient(x, y)
+  const target = routeToChild(hwnd, x, y)
+  const lparam = packClient(target.x, target.y)
   let queued = postMouseMove(hwnd, x, y)
   for (let press = 0; press < count; press += 1) {
-    queued = Boolean(PostMessageW(hwnd, messages.down, messages.held, lparam)) && queued
+    queued = Boolean(PostMessageW(target.hwnd, messages.down, messages.held, lparam)) && queued
     // A press and release posted back to back are coalesced by some toolkits
     // into a single event, so leave a gap the message loop can drain.
     Sleep(20)
-    queued = Boolean(PostMessageW(hwnd, messages.up, 0, lparam)) && queued
+    queued = Boolean(PostMessageW(target.hwnd, messages.up, 0, lparam)) && queued
     if (press + 1 < count) Sleep(40)
   }
   return queued
@@ -153,21 +249,37 @@ export function postDrag(
   delayMs = 12,
 ): boolean {
   const messages = BUTTON_MESSAGES[button]
+  // A real press captures the pointer, so every later message of the gesture
+  // reaches the window that took the press. Routing the whole drag by its start
+  // point reproduces that; routing each move on its own would not.
+  const target = routeToChild(hwnd, from.x, from.y)
+  const offsetX = from.x - target.x
+  const offsetY = from.y - target.y
   let queued = postMouseMove(hwnd, from.x, from.y)
   Sleep(delayMs)
-  queued = Boolean(PostMessageW(hwnd, messages.down, messages.held, packClient(from.x, from.y))) && queued
+  queued = Boolean(PostMessageW(
+    target.hwnd,
+    messages.down,
+    messages.held,
+    packClient(target.x, target.y),
+  )) && queued
   Sleep(delayMs)
 
   const total = Math.max(1, steps)
   for (let step = 1; step <= total; step += 1) {
     const ratio = step / total
-    const x = Math.round(from.x + (to.x - from.x) * ratio)
-    const y = Math.round(from.y + (to.y - from.y) * ratio)
-    queued = Boolean(PostMessageW(hwnd, WM_MOUSEMOVE, messages.held, packClient(x, y))) && queued
+    const x = Math.round(from.x + (to.x - from.x) * ratio) - offsetX
+    const y = Math.round(from.y + (to.y - from.y) * ratio) - offsetY
+    queued = Boolean(PostMessageW(target.hwnd, WM_MOUSEMOVE, messages.held, packClient(x, y))) && queued
     Sleep(delayMs)
   }
 
-  queued = Boolean(PostMessageW(hwnd, messages.up, 0, packClient(to.x, to.y))) && queued
+  queued = Boolean(PostMessageW(
+    target.hwnd,
+    messages.up,
+    0,
+    packClient(to.x - offsetX, to.y - offsetY),
+  )) && queued
   return queued
 }
 
@@ -203,13 +315,14 @@ export function postWheel(
   vertical: number,
   horizontal = 0,
 ): boolean {
+  const target = routeToChildAtScreen(hwnd, screen)
   const lparam = ((screen.y & 0xffff) << 16) | (screen.x & 0xffff)
   let queued = true
   if (vertical !== 0) {
-    queued = Boolean(PostMessageW(hwnd, WM_MOUSEWHEEL, wheelWParam(vertical), lparam)) && queued
+    queued = Boolean(PostMessageW(target, WM_MOUSEWHEEL, wheelWParam(vertical), lparam)) && queued
   }
   if (horizontal !== 0) {
-    queued = Boolean(PostMessageW(hwnd, WM_MOUSEHWHEEL, wheelWParam(horizontal), lparam)) && queued
+    queued = Boolean(PostMessageW(target, WM_MOUSEHWHEEL, wheelWParam(horizontal), lparam)) && queued
   }
   return queued
 }
@@ -217,15 +330,18 @@ export function postWheel(
 /**
  * Type text into a window as character messages.
  *
- * A posted `WM_CHAR` only reaches a control that already holds keyboard focus
- * inside its own window, so a caller that has not clicked into a field first
- * will see the characters dropped.
+ * Characters go to the control that holds keyboard focus inside the target,
+ * because that is what the target's own message loop would do with them. A
+ * window that owns its whole surface receives them directly. Either way a
+ * caller that has not put focus in a field first will see the characters
+ * dropped, since nothing is there to consume them.
  * @param hwnd - target window.
  * @param text - text to send; each UTF-16 code unit becomes one message.
  * @param perCharacterDelayMs - pause between characters.
  * @returns how many characters were queued.
  */
 export function postText(hwnd: number, text: string, perCharacterDelayMs = 0): number {
+  const target = routeToFocus(hwnd)
   let queued = 0
   for (const character of text) {
     // A character above the basic plane is a surrogate pair, and each half must
@@ -235,10 +351,10 @@ export function postText(hwnd: number, text: string, perCharacterDelayMs = 0): n
       const offset = code - 0x10000
       const high = 0xd800 + (offset >> 10)
       const low = 0xdc00 + (offset & 0x3ff)
-      if (PostMessageW(hwnd, WM_CHAR, high, KEY_REPEAT_ONE)) queued += 1
+      if (PostMessageW(target, WM_CHAR, high, KEY_REPEAT_ONE)) queued += 1
       if (perCharacterDelayMs > 0) Sleep(perCharacterDelayMs)
-      if (PostMessageW(hwnd, WM_CHAR, low, KEY_REPEAT_ONE)) queued += 1
-    } else if (PostMessageW(hwnd, WM_CHAR, code, KEY_REPEAT_ONE)) {
+      if (PostMessageW(target, WM_CHAR, low, KEY_REPEAT_ONE)) queued += 1
+    } else if (PostMessageW(target, WM_CHAR, code, KEY_REPEAT_ONE)) {
       queued += 1
     }
     if (perCharacterDelayMs > 0) Sleep(perCharacterDelayMs)
@@ -251,7 +367,8 @@ export function postText(hwnd: number, text: string, perCharacterDelayMs = 0): n
  *
  * The scan code in `lParam` is filled from the virtual-key code so that a target
  * which translates the message back through the keyboard layout sees the key the
- * caller named.
+ * caller named. Like {@link postText} the key goes to the focused control, which
+ * is where the target's message loop would deliver it.
  * @param hwnd - target window.
  * @param key - key name accepted by {@link virtualKeyFor}, or a virtual-key code.
  * @param extended - set the extended-key bit for keys such as the arrow cluster.
@@ -260,12 +377,13 @@ export function postText(hwnd: number, text: string, perCharacterDelayMs = 0): n
 export function postKey(hwnd: number, key: string | number, extended = false): boolean {
   const vkey = typeof key === 'number' ? key : virtualKeyFor(key)
   if (vkey <= 0) return false
+  const target = routeToFocus(hwnd)
   const scan = Number(MapVirtualKeyW(vkey, MAPVK_VK_TO_VSC)) & 0xff
   const base = KEY_REPEAT_ONE | (scan << 16) | (extended ? 1 << 24 : 0)
-  const down = Boolean(PostMessageW(hwnd, WM_KEYDOWN, vkey, base))
+  const down = Boolean(PostMessageW(target, WM_KEYDOWN, vkey, base))
   Sleep(20)
   // Bit 30 marks the transition and bit 31 the release, which is how a window
   // tells a key-up from a repeat of the key-down.
-  const up = Boolean(PostMessageW(hwnd, WM_KEYUP, vkey, base | (1 << 30) | (1 << 31)))
+  const up = Boolean(PostMessageW(target, WM_KEYUP, vkey, base | (1 << 30) | (1 << 31)))
   return down && up
 }
