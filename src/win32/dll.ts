@@ -76,14 +76,23 @@ export const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
 /** `WM_*` messages used by the window-message fallback input route. */
 export const WM_CLOSE = 0x0010
 export const WM_SETTEXT = 0x000C
+export const WM_GETTEXT = 0x000D
+export const WM_GETTEXTLENGTH = 0x000E
 export const WM_KEYDOWN = 0x0100
 export const WM_KEYUP = 0x0101
 export const WM_CHAR = 0x0102
 export const WM_MOUSEMOVE = 0x0200
 export const WM_LBUTTONDOWN = 0x0201
 export const WM_LBUTTONUP = 0x0202
+export const WM_RBUTTONDOWN = 0x0204
+export const WM_RBUTTONUP = 0x0205
+export const WM_MBUTTONDOWN = 0x0207
+export const WM_MBUTTONUP = 0x0208
 export const WM_MOUSEWHEEL = 0x020A
+export const WM_MOUSEHWHEEL = 0x020E
 export const MK_LBUTTON = 0x0001
+export const MK_RBUTTON = 0x0002
+export const MK_MBUTTON = 0x0010
 
 const user32 = koffi.load('user32.dll')
 const gdi32 = koffi.load('gdi32.dll')
@@ -155,6 +164,18 @@ export const GetClassNameW = user32.func(
   'int __stdcall GetClassNameW(intptr_t hWnd, _Out_ uint16_t *lpString, int nMaxCount)',
 )
 
+/**
+ * Find a child or top-level window by class and/or title.
+ *
+ * `EnumWindows` walks top-level windows only, so a control hosted inside a
+ * window — a Notepad edit box, for instance — is reachable only through here.
+ * Pass 0 for `parent` to search top-level windows, and 0 for a class or title
+ * that should not constrain the search.
+ */
+export const FindWindowExW = user32.func(
+  'intptr_t __stdcall FindWindowExW(intptr_t parent, intptr_t childAfter, str16 className, str16 windowName)',
+)
+
 /** Write the owning process and return the owning thread id. */
 export const GetWindowThreadProcessId = user32.func(
   'uint32 __stdcall GetWindowThreadProcessId(intptr_t hWnd, _Out_ uint32 *lpdwProcessId)',
@@ -173,6 +194,16 @@ export const GetClientRect = user32.func(
 /** Map a client-area point to screen coordinates in place. */
 export const ClientToScreen = user32.func(
   'bool __stdcall ClientToScreen(intptr_t hWnd, _Inout_ POINT *lpPoint)',
+)
+
+/**
+ * Map a screen point to client-area coordinates in place.
+ *
+ * Mouse messages posted to a window carry client coordinates in `lParam`, so a
+ * screenshot-derived screen point has to be converted before posting.
+ */
+export const ScreenToClient = user32.func(
+  'bool __stdcall ScreenToClient(intptr_t hWnd, _Inout_ POINT *lpPoint)',
 )
 
 /** Window currently receiving keyboard input. */
@@ -220,6 +251,17 @@ export const AllowSetForegroundWindow = user32.func(
 /** Deliver a message to a window's procedure synchronously. */
 export const SendMessageW = user32.func(
   'intptr_t __stdcall SendMessageW(intptr_t hWnd, uint32 Msg, uintptr_t wParam, intptr_t lParam)',
+)
+
+/**
+ * `SendMessageW` with a pointer `lParam`.
+ *
+ * Messages that read or write a caller-owned buffer (`WM_GETTEXT`) need this
+ * binding: koffi rejects a Buffer passed to the `intptr_t` parameter of the
+ * numeric form above.
+ */
+export const SendMessageBuffer = user32.func(
+  'intptr_t __stdcall SendMessageW(intptr_t hWnd, uint32 Msg, uintptr_t wParam, void *lParam)',
 )
 
 /** Deliver a message without waiting for it to be processed. */
@@ -283,9 +325,13 @@ export const BitBlt = gdi32.func(
 // -------------------------------------------------------------------- input
 
 /**
- * Inject mouse or keyboard events into the system input stream. Unlike
- * `PostMessage`, this reaches Chromium and other windows that ignore synthesized
- * window messages, at the cost of moving the real cursor.
+ * Inject mouse or keyboard events into the system input stream.
+ *
+ * This is the route that reaches a window reading the hardware input queue
+ * rather than its message queue, and the only one that moves the real cursor.
+ * It delivers to the foreground window alone, so a caller aiming at a specific
+ * window must raise it first. Posting messages is the cheaper default and does
+ * reach Chromium, but a window is free to ignore what it is posted.
  */
 export const SendInput = user32.func(
   'uint32 __stdcall SendInput(uint32 nInputs, _In_ INPUT *pInputs, int cbSize)',
@@ -296,6 +342,17 @@ export const SetCursorPos = user32.func('bool __stdcall SetCursorPos(int X, int 
 
 /** Current cursor position in screen coordinates. */
 export const GetCursorPos = user32.func('bool __stdcall GetCursorPos(_Out_ POINT *lpPoint)')
+
+/**
+ * Translate a virtual-key code into a scan code.
+ *
+ * `WM_KEYDOWN` carries the scan code in bits 16-23 of `lParam`, and a window
+ * that reads it there sees a different key than the virtual-key code alone
+ * implies when the two disagree.
+ */
+export const MapVirtualKeyW = user32.func(
+  'uint32 __stdcall MapVirtualKeyW(uint32 uCode, uint32 uMapType)',
+)
 
 /** Swap the meaning of the primary and secondary mouse buttons. */
 export const SwapMouseButton = user32.func('bool __stdcall SwapMouseButton(bool fSwap)')

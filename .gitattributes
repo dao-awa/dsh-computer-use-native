@@ -1,0 +1,7 @@
+# Normalize line endings so the published tree is identical on every platform.
+* text=auto eol=lf
+
+# Binary fixtures git must not touch.
+*.png binary
+*.bmp binary
+*.tgz binary

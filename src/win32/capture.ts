@@ -40,6 +40,7 @@ import {
   SM_YVIRTUALSCREEN,
   SelectObject,
 } from './dll.ts'
+import { getWindowInfo } from './window.ts'
 
 /** `BitBlt` raster operation: direct copy of source pixels. */
 const SRCCOPY_ROP = 0x00CC0020
@@ -250,20 +251,23 @@ export interface AutoCaptureResult {
  * colour counts is what keeps a silently blank screenshot from reaching the
  * model, which would otherwise act on an image it cannot interpret.
  * @param hwnd - window to capture.
- * @param region - window frame in physical screen pixels.
+ * @param region - window frame in physical screen pixels; read from the window
+ *   when omitted, which is the safer form because a rect the caller read earlier
+ *   can be stale if the window moved in between.
  * @param options - capture tuning.
  * @returns the best available frame plus the route history.
  */
 export function captureWindowAuto(
   hwnd: number,
-  region: CaptureRegion,
+  region?: CaptureRegion,
   options: { clientOnly?: boolean, allowScreenFallback?: boolean } = {},
 ): AutoCaptureResult {
+  const area = region ?? getWindowInfo(hwnd).rect
   const attempts: AutoCaptureResult['attempts'] = []
 
   try {
     const frame = captureWindow(
-      hwnd, { x: region.x, y: region.y }, region.width, region.height, options.clientOnly ?? false,
+      hwnd, { x: area.x, y: area.y }, area.width, area.height, options.clientOnly ?? false,
     )
     const colours = distinctColourCount(frame)
     attempts.push({ method: 'print-window', colours })
@@ -283,7 +287,7 @@ export function captureWindowAuto(
   // Raising it first is what makes the fallback meaningful rather than a
   // capture of whatever window happened to be covering it.
   try {
-    const frame = captureScreen(region)
+    const frame = captureScreen(area)
     const colours = distinctColourCount(frame)
     attempts.push({ method: 'screen', colours })
     if (colours > BLANK_FRAME_COLOUR_LIMIT) return { frame, attempts, blankSuspect: false }

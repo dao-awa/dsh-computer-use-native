@@ -1,6 +1,12 @@
+# Build outputs.
 node_modules/
 lib/
+*.tgz
+
+# Test artifacts: capture output and the staged browser profile the probe uses.
 spike/*.png
 spike/*.bmp
-*.tgz
+spike-out/
+spike/.probe-profile/
+
 compat-check/

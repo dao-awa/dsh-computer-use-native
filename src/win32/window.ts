@@ -47,6 +47,22 @@ import { assertInputLayout, decodeUtf16, readPointer } from './native.ts'
 /** Virtual-key code for Alt, used to release the foreground lock. */
 const VK_MENU = 0x12
 
+/**
+ * Callback signature for `EnumWindows`.
+ *
+ * koffi rejects a second `proto()` registered under the same type name, so this
+ * is declared once at module scope. Declaring it inside `listWindows` made every
+ * enumeration after the first throw `Duplicate type name 'EnumWindowsProc'`.
+ */
+const EnumWindowsProc = koffi.proto(
+  'bool __stdcall EnumWindowsProc(intptr_t hwnd, intptr_t lParam)',
+)
+
+/** `EnumWindows`, resolved once alongside the callback type it takes. */
+const EnumWindows = user32.func(
+  'bool __stdcall EnumWindows(void *lpEnumFunc, intptr_t lParam)',
+)
+
 /** A top-level window as the model sees it. */
 export interface WindowInfo {
   /** Native window handle, stable for the window's lifetime. */
@@ -194,13 +210,6 @@ export interface WindowFilter {
  */
 export function listWindows(filter: WindowFilter = {}): WindowInfo[] {
   const found: WindowInfo[] = []
-  const EnumWindowsProc = koffi.proto(
-    'bool __stdcall EnumWindowsProc(intptr_t hwnd, intptr_t lParam)',
-  )
-  const EnumWindows = user32.func(
-    'bool __stdcall EnumWindows(void *lpEnumFunc, intptr_t lParam)',
-  )
-
   const callback = koffi.register((hwnd: number): boolean => {
     if (!IsWindow(hwnd)) return true
     if (!filter.includeHidden && !IsWindowVisible(hwnd)) return true

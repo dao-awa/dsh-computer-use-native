@@ -60,7 +60,10 @@ function acquireFrame(target: ScreenshotTarget): {
     )
   }
 
-  const result = captureWindowAuto(info.hwnd, info.rect, { allowScreenFallback: true })
+  // The frame rect is read inside the capture call rather than reused from the
+  // identity lookup above, so a window that moved in between cannot be captured
+  // at a stale offset.
+  const result = captureWindowAuto(info.hwnd, undefined, { allowScreenFallback: true })
   for (const attempt of result.attempts) {
     notes.push(`${attempt.method}: ${attempt.error ?? `${attempt.colours} distinct colours`}`)
   }

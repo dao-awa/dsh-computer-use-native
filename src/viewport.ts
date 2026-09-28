@@ -213,6 +213,19 @@ export class ViewportRegistry {
   }
 
   /**
+   * The most recent viewport, when there is one.
+   *
+   * Tools that name their own target — typing, which posts to the window the
+   * last screenshot came from — need the window without requiring a capture to
+   * exist, so this differs from {@link resolve} by returning undefined instead
+   * of throwing.
+   * @returns the latest viewport, or undefined before any capture.
+   */
+  latestViewport(): Viewport | undefined {
+    return this.latest
+  }
+
+  /**
    * Find the viewport a call refers to.
    * @param id - an explicit viewport id, or undefined for the most recent capture.
    * @returns the viewport.

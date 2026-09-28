@@ -1,11 +1,17 @@
 /**
  * Mouse and keyboard injection through `SendInput`.
  *
- * `SendInput` is used rather than `PostMessage` because synthesized window
- * messages are ignored by Chromium, WebView2, and most modern toolkits: they
- * read input through the raw input thread, not the message queue. The cost is
- * that the real cursor moves, which is why the caller-visible cursor position is
- * saved and restored around point operations.
+ * `SendInput` writes into the system input stream, which every window reads, so
+ * this is the route that cannot be refused. It delivers to the foreground window
+ * alone, which is why a caller aiming at a specific window must raise it first,
+ * and it moves the real cursor, which is why the caller-visible cursor position
+ * is saved and restored around point operations.
+ *
+ * The cheaper route is {@link module:dsh-computer-use-native/win32/post}, which
+ * posts messages to one window's queue instead. Posted messages are measured to
+ * reach Chromium, WebView2, and classic Win32 controls without raising anything,
+ * but a window is free to ignore them, so both routes stay available and the
+ * tools report which one ran.
  *
  * Text is delivered as Unicode code units (`KEYEVENTF_UNICODE`) rather than
  * virtual-key presses. That is the only route that reaches characters outside

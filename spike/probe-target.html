@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Background Input Probe</title>
+<style>
+  html, body { margin: 0; height: 100%; font: 15px/1.5 "Segoe UI", sans-serif; }
+  body { display: grid; grid-template-rows: auto auto 1fr; background: #101418; color: #e8eef5; }
+  header { padding: 16px 20px; background: #1b2530; }
+  h1 { margin: 0 0 4px; font-size: 17px; font-weight: 600; }
+  .hint { font-size: 12px; opacity: .65; }
+  #readout { display: flex; gap: 28px; padding: 12px 20px; background: #16202a; font-size: 13px; }
+  #readout b { display: block; font-size: 22px; font-weight: 700; color: #4ade80; font-variant-numeric: tabular-nums; }
+  #readout .typed b { color: #60a5fa; word-break: break-all; font-size: 16px; }
+  #pad { margin: 14px; border: 2px dashed #3d4c5c; border-radius: 10px; position: relative; overflow: hidden; }
+  #pad.armed { border-color: #4ade80; }
+  /* The field fills the pad so that a click anywhere inside it takes DOM focus,
+     which is what makes the keystroke half of the probe meaningful. */
+  #pad input {
+    position: absolute; inset: 18px;
+    padding: 10px 12px; font-size: 15px; border-radius: 6px;
+    border: 1px solid #3d4c5c; background: #0b0f13; color: #e8eef5;
+  }
+  #pad .cross {
+    position: absolute; width: 13px; height: 13px; margin: -7px 0 0 -7px;
+    border-radius: 50%; background: #f87171; box-shadow: 0 0 0 2px #101418;
+    z-index: 2; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Background Input Probe</h1>
+    <div class="hint">Counts a click only if the window was NOT in the foreground when the message arrived.</div>
+  </header>
+  <div id="readout">
+    <div>clicks<b id="clicks">0</b></div>
+    <div>last client point<b id="point">-</b></div>
+    <div>focused at click<b id="focused">-</b></div>
+    <div class="typed">typed<b id="typed">-</b></div>
+  </div>
+  <div id="pad">
+    <input id="field" placeholder="type here via background messages" autocomplete="off">
+  </div>
+<script>
+  const clicks = document.getElementById('clicks');
+  const point = document.getElementById('point');
+  const focused = document.getElementById('focused');
+  const typed = document.getElementById('typed');
+  const pad = document.getElementById('pad');
+  let n = 0;
+
+  addEventListener('mousedown', (event) => {
+    n += 1;
+    clicks.textContent = String(n);
+    point.textContent = event.clientX + ',' + event.clientY;
+    focused.textContent = document.hasFocus() ? 'yes' : 'NO';
+    const cross = document.createElement('div');
+    cross.className = 'cross';
+    cross.style.left = event.clientX + 'px';
+    cross.style.top = event.clientY + 'px';
+    pad.appendChild(cross);
+  });
+
+  const field = document.getElementById('field');
+  field.addEventListener('input', () => { typed.textContent = field.value || '-'; });
+  addEventListener('keydown', (event) => {
+    if (event.key === 'F2') { n = 0; clicks.textContent = '0'; point.textContent = '-'; focused.textContent = '-'; field.value = ''; typed.textContent = '-'; pad.querySelectorAll('.cross').forEach((c) => c.remove()); }
+  });
+</script>
+</body>
+</html>
