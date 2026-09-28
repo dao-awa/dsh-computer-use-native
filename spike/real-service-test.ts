@@ -16,6 +16,7 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import { ComputerUseRegistry } from '@deepseek-ai/dsh-computer-use'
+import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import * as plugin from '../src/index.ts'
 
 const failures: string[] = []
@@ -25,7 +26,6 @@ function check(label: string, condition: boolean, detail: string): void {
 }
 
 const registeredTools = new Map<string, unknown>()
-const promptSections: { name: string, text: string }[] = []
 
 const ctx = new Context()
 ctx.provide('tools', {
@@ -33,18 +33,6 @@ ctx.provide('tools', {
     if (registeredTools.has(tool.name)) throw new Error(`duplicate tool ${tool.name}`)
     registeredTools.set(tool.name, tool)
     return () => { registeredTools.delete(tool.name) }
-  },
-})
-ctx.provide('systemPrompt', {
-  section(section: { name: string, text: string }): () => void {
-    promptSections.push(section)
-    return () => {
-      const index = promptSections.indexOf(section)
-      if (index >= 0) promptSections.splice(index, 1)
-    }
-  },
-  getSectionOrder(): number {
-    return 0
   },
 })
 ctx.provide('attachments', {
@@ -61,9 +49,19 @@ ctx.provide('attachments', {
 
 console.log('=== real computer-use service ===\n')
 
-// The real service registers itself on construction, exactly as the Loader does.
+// Both services are real. The registry owns the exclusive provider slot, and the
+// prompt service owns the section this plugin publishes into; a stand-in for
+// either would hide a wrong assumption about its API.
 const registry = new ComputerUseRegistry(ctx)
-console.log('1. the real registry is installed')
+const systemPrompt = new SystemPrompt(ctx, {
+  includeHarnessIdentity: false,
+  includeRuntimeContext: false,
+  personaPrefix: '',
+  personaSuffix: '',
+  toolOrder: undefined as unknown as string[],
+})
+
+console.log('1. the real services are installed')
 // `ctx.computerUse` is a tracking proxy rather than the raw instance, so the two
 // are compared through the state the service owns, not by identity.
 check('service is reachable through the context',
@@ -71,14 +69,26 @@ check('service is reachable through the context',
   ctx.computerUse === undefined ? 'ctx.computerUse is undefined' : 'ctx.computerUse resolves')
 check('no provider before the plugin mounts', registry.providerName === undefined,
   String(registry.providerName))
+check('the prompt service names the computer-use section order',
+  systemPrompt.getSectionOrder('TOOL_COMPUTER_USE') > 0,
+  String(systemPrompt.getSectionOrder('TOOL_COMPUTER_USE')))
 
-console.log('\n2. mount the plugin against it')
+console.log('\n2. mount the plugin against them')
 const fiber = await ctx.plugin(plugin, {})
 check('the provider slot is claimed', registry.providerName !== undefined, String(registry.providerName))
 check('the claimed name is the configured default', registry.providerName === 'native-win32',
   String(registry.providerName))
 check('all eight tools registered', registeredTools.size === 8, `${registeredTools.size} tools`)
-check('one prompt section published', promptSections.length === 1, `${promptSections.length} sections`)
+
+// Assembling is what the model actually receives, so this checks the section by
+// its effect rather than by reading the service's internal layer state, which is
+// scoped to the registering context and not visible from here.
+const assembly = JSON.stringify(await systemPrompt.assemble())
+check('the guidance reached the assembled prompt',
+  assembly.includes('computer_screenshot') && assembly.includes('dispatch'),
+  assembly.includes('computer_screenshot')
+    ? `${assembly.length} characters assembled`
+    : 'the guidance text is absent from the assembly')
 
 console.log('\n3. the slot really is exclusive')
 let secondAttempt = 'no error'
@@ -93,7 +103,9 @@ console.log('\n4. disposal releases the slot')
 await fiber.dispose()
 check('the provider slot is released', registry.providerName === undefined, String(registry.providerName))
 check('tools were removed', registeredTools.size === 0, `${registeredTools.size} remaining`)
-check('the prompt section was removed', promptSections.length === 0, `${promptSections.length} remaining`)
+const afterDispose = JSON.stringify(await systemPrompt.assemble())
+check('the guidance left the assembled prompt', !afterDispose.includes('computer_screenshot'),
+  afterDispose.includes('computer_screenshot') ? 'the guidance survived disposal' : 'removed')
 
 console.log('\n5. the slot can be claimed again after disposal')
 const second = await ctx.plugin(plugin, {})
