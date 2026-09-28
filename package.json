@@ -44,12 +44,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepare": "tsc -p tsconfig.json",
     "test": "tsc --noEmit -p tsconfig.json",
-    "pipeline": "tsx spike/pipeline-test.ts",
-    "pipeline:click": "tsx spike/pipeline-test.ts --click",
-    "bench": "tsx spike/size-bench.ts",
-    "smoke": "tsx spike/win32-smoke.ts",
-    "prepublishOnly": "npm run build"
+    "pipeline": "tsx --tsconfig tsconfig.test.json spike/pipeline-test.ts",
+    "pipeline:click": "tsx --tsconfig tsconfig.test.json spike/pipeline-test.ts --click",
+    "compose": "tsx --tsconfig tsconfig.test.json spike/compose-test.ts",
+    "bench": "tsx --tsconfig tsconfig.test.json spike/size-bench.ts",
+    "smoke": "tsx --tsconfig tsconfig.test.json spike/win32-smoke.ts"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.4",

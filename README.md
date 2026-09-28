@@ -183,12 +183,40 @@ Three details are load-bearing and would be silent failures if wrong:
 
 ```sh
 npm install
-npm run typecheck     # compiles against the installed harness declarations
+npm run typecheck                        # compiles against the harness declarations
 npm run build
-npx tsx spike/pipeline-test.ts          # capture -> encode -> viewport -> coordinates
-npx tsx spike/pipeline-test.ts --click  # also sends a real click
-npx tsx spike/size-bench.ts             # image size by maxEdge and PNG effort
+npm run pipeline                         # capture -> encode -> viewport -> coordinates
+npm run pipeline:click                   # the same, and sends a real click
+npm run compose                          # mounts the plugin in a real Cordis context
+npm run bench                            # image size by maxEdge and PNG effort
 ```
+
+Two tsconfigs exist because they have opposite jobs. `tsconfig.json` typechecks
+against the harness declaration files, so a build fails when the host's API
+changes. `tsconfig.test.json` clears that mapping so the spike scripts resolve
+the real packages from `node_modules` at runtime; a loader would otherwise follow
+the mapping to a `.d.ts` file. The spike scripts must be started with
+`--tsconfig tsconfig.test.json`.
+
+### Harness schema rules the tools follow
+
+These are easy to get wrong and the error messages do not explain the rule:
+
+- Tool `parameters` and tool `output.schema` are different DSLs. `parameters`
+  marks a required field with `required: true` on the field. `output.schema`
+  does too — but only on fields. A `required` key at the **root** of an output
+  schema is rejected, whether it is `true` or an array of names, so requiredness
+  there is expressed on each property.
+- Every nested object in either DSL must state `additionalProperties`
+  explicitly as `true` or `false`. Omitting it is an error.
+- A function plugin exports `name`, `inject`, `Config`, and `apply`, and must
+  have no default export; a default export makes the loader discard the
+  namespace.
+- Every registration must be yielded inside `ctx.effect()`, including
+  `systemPrompt.section()`. A registration made outside the effect survives
+  disposal.
+- `spike/schema-probe.ts` and `spike/schema-probe2.ts` record which forms the
+  installed harness accepts. Re-run them after a harness upgrade.
 
 `spike/win32-smoke.ts` exercises enumeration, capture, and the foreground
 workaround without the plugin layer.
