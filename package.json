@@ -57,6 +57,7 @@
     "pipeline": "tsx --tsconfig tsconfig.test.json spike/pipeline-test.ts",
     "pipeline:click": "tsx --tsconfig tsconfig.test.json spike/pipeline-test.ts --click",
     "compose": "tsx --tsconfig tsconfig.test.json spike/compose-test.ts",
+    "compose:real": "tsx --tsconfig tsconfig.harness.json spike/real-service-test.ts",
     "bg-probe": "tsx --tsconfig tsconfig.test.json spike/background-input-probe.ts",
     "bg-tools": "tsx --tsconfig tsconfig.test.json spike/background-tools-test.ts",
     "bench": "tsx --tsconfig tsconfig.test.json spike/size-bench.ts",

@@ -246,16 +246,38 @@ npm run build
 npm run pipeline                         # capture -> encode -> viewport -> coordinates
 npm run pipeline:click                   # the same, and sends a real click
 npm run compose                          # mounts the plugin in a real Cordis context
+npm run compose:real                     # mounts it against the real computer-use service
 npm run bg-tools                         # drives a backgrounded Chromium page through the tools
 npm run bench                            # image size by maxEdge and PNG effort
 ```
 
-Two tsconfigs exist because they have opposite jobs. `tsconfig.json` typechecks
+Three tsconfigs exist because they have different jobs. `tsconfig.json` typechecks
 against the harness declaration files, so a build fails when the host's API
 changes. `tsconfig.test.json` clears that mapping so the spike scripts resolve
 the real packages from `node_modules` at runtime; a loader would otherwise follow
-the mapping to a `.d.ts` file. The spike scripts must be started with
-`--tsconfig tsconfig.test.json`.
+the mapping to a `.d.ts` file. `tsconfig.harness.json` does the opposite and maps
+the specifiers onto the harness sources, which is the only way a test can mount a
+real harness service instead of a stand-in. The spike scripts must be started with
+the matching one.
+
+`compose:real` is the composition check that matters. It mounts the plugin
+against `@deepseek-ai/dsh-computer-use` itself, which reserves its provider slot
+through a `ctx.effect` call made inside `register()`. Cordis resolves a service's
+`this.ctx` to its caller, so that effect binds to this plugin's fiber and disposal
+releases the slot — a claim about framework behaviour that a stand-in service
+cannot check, and one whose failure would leave the slot occupied after an unload.
+
+The profile side is verifiable without starting the app:
+
+```sh
+dsh --profile web --dump-config          # composes the tree, patches applied
+dsh --profile web --dump-config-schema   # imports every entry to read its Config
+```
+
+The schema dump is the stronger of the two, because printing an entry's config
+schema requires importing its module. This plugin's `maxEdge`, `compressionLevel`,
+and `typeDelayMs` appearing there, with their defaults, is what proves the patch
+row resolves and the built module loads.
 
 ### Harness schema rules the tools follow
 
