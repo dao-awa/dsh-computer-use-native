@@ -1,0 +1,16 @@
+{
+  // Runtime configuration for the spike scripts.
+  //
+  // The main tsconfig maps the harness imports onto the installed harness
+  // declarations so the build typechecks against the host it will run under.
+  // A runtime loader honours those mappings too, which would resolve
+  // '@deepseek-ai/cordis' to a declaration file. This config clears the mapping
+  // so scripts resolve the real packages from node_modules.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {},
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/**/*.ts", "spike/**/*.ts"]
+}

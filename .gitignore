@@ -1,0 +1,6 @@
+node_modules/
+lib/
+spike/*.png
+spike/*.bmp
+*.tgz
+compat-check/

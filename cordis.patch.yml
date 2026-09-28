@@ -1,0 +1,35 @@
+# dsh-computer-use-native — DSH bundle patch layer
+#
+# Mounts a Windows computer-use provider that drives the desktop through Win32
+# directly, published under this bundle's own package name.
+#
+# Two rows are needed. `@deepseek-ai/dsh-computer-use` owns the exclusive
+# provider registration and is not part of the base or web-app bundle, so a
+# composition that only names the provider would fail its injection. The service
+# row is therefore inserted first and the provider second; the Loader resolves
+# them in order.
+#
+# This bundle is a real computer-use provider, unlike computer-use-win, which is
+# an MCP server bridged through @deepseek-ai/dsh-mcp-client. The two do not
+# conflict: only one computer-use provider may register, but an MCP bridge is not
+# a provider. If both are mounted, unload this row or the MCP one to avoid
+# offering the model two overlapping desktop toolsets.
+#
+# Path resolution: `baseUrl` is this patch file's own directory, so the specifier
+# resolves inside whichever profile installed the bundle, under any $DSH_HOME.
+
+- insert:
+    - id: computer-use-service
+      name: '@deepseek-ai/dsh-computer-use'
+
+    - id: computer-use-native-win32
+      name: 'dsh-computer-use-native'
+      config:
+        # Longest edge of a returned screenshot. Raise it when small UI text must
+        # be legible; lower it to spend fewer tokens per capture.
+        maxEdge: 1568
+        # PNG compression effort, 0-9.
+        compressionLevel: 6
+        # Pause between typed characters. Raise it for applications that drop
+        # input delivered faster than they can process it.
+        typeDelayMs: 0

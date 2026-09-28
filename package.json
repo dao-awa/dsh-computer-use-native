@@ -1,0 +1,75 @@
+{
+  "name": "dsh-computer-use-native",
+  "version": "0.1.0",
+  "description": "Windows computer use for DeepSeek Harness built for a vision model: screenshot the real desktop, read the interface from pixels, and click what you see. Drives Win32 through koffi FFI with no native addon and no accessibility tree.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "computer-use",
+    "windows",
+    "win32",
+    "vision",
+    "screenshot",
+    "automation",
+    "koffi"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "os": [
+    "win32"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsc --noEmit -p tsconfig.json",
+    "pipeline": "tsx spike/pipeline-test.ts",
+    "pipeline:click": "tsx spike/pipeline-test.ts --click",
+    "bench": "tsx spike/size-bench.ts",
+    "smoke": "tsx spike/win32-smoke.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/dsh-attachment": "^0.1.7-rc.1",
+    "@deepseek-ai/dsh-computer-use": "^0.1.7-rc.1",
+    "@deepseek-ai/dsh-llm": "^0.1.7-rc.1",
+    "@deepseek-ai/dsh-system-prompt": "^0.1.7-rc.1",
+    "@deepseek-ai/dsh-tools": "^0.1.7-rc.1"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.4",
+    "koffi": "^3.3.2",
+    "sharp": "^0.35.3"
+  },
+  "optionalDependencies": {
+    "@koromix/koffi-win32-x64": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
